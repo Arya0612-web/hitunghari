@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Hitung Mundur Dinamis - Otomatis Update</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    screens: {
+                        'xs': '375px',
+                        'sm': '480px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes soft-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; transform: scale(1.02); }
+        }
+        .animate-soft-pulse {
+            animation: soft-pulse 2s ease-in-out infinite;
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+        .toast-notification {
+            animation: fadeOut 2s ease forwards;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .countdown-update {
+            animation: slideIn 0.5s ease;
+        }
+        * {
+            transition: all 0.2s ease;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-900 via-purple-800 to-pink-700 min-h-screen flex items-center justify-center p-4 relative">
+
+    <!-- Toast Notifikasi -->
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 z-50 hidden">
+        <div class="bg-green-500 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-2">
+            <span>💾</span> Tersimpan
+        </div>
+    </div>
+
+    <!-- Card Utama -->
+    <div class="w-full max-w-sm mx-auto bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-5 border border-white/20">
+        
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <div class="text-4xl mb-2">⏳</div>
+            <h1 class="text-2xl font-bold text-white tracking-wide">Hitung Mundur Dinamis</h1>
+            <p class="text-white/70 text-sm mt-1">Otomatis update setiap hari</p>
+        </div>
+
+        <!-- Info Hari Ini -->
+        <div class="bg-white/10 rounded-xl p-3 mb-4 border border-white/20 text-center">
+            <p class="text-white/60 text-[11px] uppercase tracking-wide">Hari Ini</p>
+            <p class="text-white font-semibold text-sm" id="todayDate">-</p>
+        </div>
+
+        <!-- Form Pilih Target -->
+        <div class="space-y-4 mb-8">
+            <!-- Target Tanggal -->
+            <div class="bg-white/10 rounded-xl p-3 border border-white/20">
+                <label class="block text-white/80 text-sm font-medium mb-1 flex items-center gap-1">
+                    <span>🎯</span> Tanggal Target
+                </label>
+                <input type="date" id="targetDate" class="w-full bg-white/20 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/50 border border-white/30 cursor-pointer">
+                <p class="text-white/40 text-[10px] mt-1">✨ Hitung mundur dari HARI INI ke target</p>
+            </div>
+
+            <!-- Tombol Simpan & Reset -->
+            <div class="flex gap-3">
+                <button id="saveBtn" class="flex-1 bg-white text-purple-700 font-bold py-3 rounded-xl shadow-lg hover:bg-gray-100 active:scale-95 transition transform duration-150 flex items-center justify-center gap-2">
+                    <span>💾</span> Simpan Target
+                </button>
+                <button id="resetBtn" class="bg-white/20 text-white font-bold py-3 px-4 rounded-xl shadow-lg hover:bg-white/30 active:scale-95 transition transform duration-150 flex items-center justify-center gap-1">
+                    <span>🔄</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Display Hasil Hitung Mundur -->
+        <div id="resultArea" class="text-center space-y-4">
+            <div class="bg-white/5 rounded-2xl p-5 border border-dashed border-white/30">
+                <div class="text-white/50 text-5xl mb-2">📆</div>
+                <p class="text-white/60 text-sm">Pilih tanggal target</p>
+                <p class="text-white/40 text-xs mt-1">Akan otomatis update setiap hari</p>
+            </div>
+        </div>
+
+        <!-- Info tambahan -->
+        <div class="mt-6 text-center text-white/40 text-[10px] flex justify-center gap-3">
+            <span>🔄 Update otomatis setiap hari</span>
+            <span>💾 Tersimpan di perangkat</span>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const targetDateInput = document.getElementById('targetDate');
+        const saveBtn = document.getElementById('saveBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const resultArea = document.getElementById('resultArea');
+        const todayDateSpan = document.getElementById('todayDate');
+        const toast = document.getElementById('toast');
+
+        // Key untuk LocalStorage
+        const STORAGE_KEY = 'countdown_target_date';
+
+        // Fungsi show toast
+        function showToast(message = '💾 Tersimpan') {
+            toast.innerHTML = `
+                <div class="bg-green-500 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-2">
+                    <span>${message.includes('💾') ? '💾' : '✅'}</span> ${message}
+                </div>
+            `;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 1500);
+        }
+
+        // Format tanggal ke format Indonesia
+        function formatDateIndonesian(dateString) {
+            const date = new Date(dateString);
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            return date.toLocaleDateString('id-ID', options);
+        }
+
+        // Format tanggal singkat untuk display
+        function formatDateShort(dateString) {
+            const date = new Date(dateString);
+            const options = { day: 'numeric', month: 'long', year: 'numeric' };
+            return date.toLocaleDateString('id-ID', options);
+        }
+
+        // Mendapatkan hari ini (reset jam ke 00:00:00)
+        function getToday() {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return today;
+        }
+
+        // Menghitung selisih hari dari hari ini ke target
+        function getDaysToTarget(targetDateStr) {
+            const today = getToday();
+            const targetDate = new Date(targetDateStr);
+            targetDate.setHours(0, 0, 0, 0);
+            
+            const diffTime = targetDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays;
+        }
+
+        // Validasi target date
+        function validateTarget(targetDateStr) {
+            if (!targetDateStr) {
+                return { valid: false, message: "Pilih tanggal target terlebih dahulu!" };
+            }
+            
+            const today = getToday();
+            const targetDate = new Date(targetDateStr);
+            targetDate.setHours(0, 0, 0, 0);
+            
+            if (targetDate < today) {
+                return { valid: false, message: "⚠️ Tanggal target sudah lewat dari hari ini!" };
+            }
+            
+            return { valid: true };
+        }
+
+        // Render tampilan hitung mundur
+        function renderCountdown(daysLeft, targetFormatted) {
+            const today = getToday();
+            const targetDate = new Date(targetDateInput.value);
+            targetDate.setHours(0, 0, 0, 0);
+            
+            const isToday = targetDate.getTime() === today.getTime();
+            const isPast = targetDate < today;
+            
+            let statusBadge = '';
+            let statusColor = '';
+            let message = '';
+            let emoji = '';
+            
+            if (isPast) {
+                statusBadge = '⏰ Telah Berlalu';
+                statusColor = 'bg-red-500/80';
+                message = `Target sudah lewat ${Math.abs(daysLeft)} hari yang lalu`;
+                emoji = '😢';
+            } else if (isToday) {
+                statusBadge = '🎉 HARI INI! 🎉';
+                statusColor = 'bg-yellow-500 animate-pulse';
+                message = 'Selamat! Hari ini adalah hari target! 🎊';
+                emoji = '🥳';
+            } else {
+                statusBadge = '⏳ Masih Tersisa';
+                statusColor = 'bg-green-500/80';
+                message = `Menuju tanggal target`;
+                emoji = '🚀';
+            }
+            
+            const isNear = (daysLeft <= 3 && daysLeft > 0 && !isToday);
+            const extraClass = isNear ? 'animate-soft-pulse' : '';
+            
+            // Progress bar (asumsi maksimal 365 hari untuk full bar)
+            let progressPercent = 0;
+            if (!isPast && !isToday && daysLeft > 0) {
+                // Semakin kecil hari tersisa, semakin penuh bar
+                // Target 365 hari ke depan = 0%, 0 hari = 100%
+                const maxDays = 365;
+                progressPercent = Math.min(100, Math.max(0, ((maxDays - daysLeft) / maxDays) * 100));
+            } else if (isToday) {
+                progressPercent = 100;
+            } else if (isPast) {
+                progressPercent = 100;
+            }
+            
+            // Quote motivasi berdasarkan sisa hari
+            let quote = '';
+            if (!isPast && !isToday) {
+                if (daysLeft > 30) quote = '💪 Masih ada waktu, tetap semangat!';
+                else if (daysLeft > 7) quote = '✨ Waktu terus berjalan, persiapkan diri!';
+                else if (daysLeft > 1) quote = '⚡ Tinggal beberapa hari lagi!';
+                else if (daysLeft === 1) quote = '🔥 Besok adalah harinya!';
+            } else if (isToday) {
+                quote = '🎉 Selamat menikmati hari ini! 🎉';
+            } else {
+                quote = '📅 Saatnya menentukan target baru!';
+            }
+            
+            const html = `
+                <div class="bg-white/10 rounded-2xl p-4 backdrop-blur-sm border border-white/30 space-y-4 countdown-update">
+                    <!-- Status Badge -->
+                    <div class="flex justify-center">
+                        <span class="${statusColor} text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">${statusBadge}</span>
+                    </div>
+                    
+                    <!-- Emoji besar -->
+                    <div class="text-5xl text-center">${emoji}</div>
+                    
+                    <!-- Angka Hari Besar -->
+                    <div class="text-center ${extraClass}">
+                        <div class="text-7xl font-black text-white tracking-wider">
+                            ${Math.abs(daysLeft)}
+                        </div>
+                        <div class="text-white/80 text-sm uppercase tracking-wide mt-1">
+                            ${isPast ? 'Hari yang lalu' : (isToday ? 'Hari ini!' : 'Hari lagi')}
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar visual -->
+                    <div class="w-full bg-white/20 rounded-full h-2 overflow-hidden">
+                        <div class="bg-gradient-to-r from-green-400 to-blue-500 h-full rounded-full transition-all duration-700" style="width: ${progressPercent}%"></div>
+                    </div>
+                    
+                    <!-- Detail Target -->
+                    <div class="bg-white/5 rounded-xl p-3 space-y-2 text-left text-sm">
+                        <div class="flex items-start gap-2 text-white/80">
+                            <span class="text-base">🎯</span>
+                            <div>
+                                <p class="text-[11px] text-white/50">TANGGAL TARGET</p>
+                                <p class="font-medium">${targetFormatted}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-2 text-white/80">
+                            <span class="text-base">📅</span>
+                            <div>
+                                <p class="text-[11px] text-white/50">HARI INI</p>
+                                <p class="font-medium">${formatDateIndonesian(getToday().toISOString().split('T')[0])}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pesan motivasi -->
+                    <p class="text-white/70 text-xs italic text-center">
+                        ${quote}
+                    </p>
+                    
+                    <!-- Info update otomatis -->
+                    <p class="text-white/30 text-[9px] text-center">
+                                        🔄 Akan otomatis berubah besok
+                    </p>
+                </div>
+            `;
+            
+            resultArea.innerHTML = html;
+        }
+        
+        // Fungsi error render
+        function renderError(message) {
+            resultArea.innerHTML = `
+                <div class="bg-red-500/30 rounded-2xl p-5 border border-red-300/50 text-center">
+                    <div class="text-3xl mb-2">⚠️</div>
+                    <p class="text-white font-medium text-sm">${message}</p>
+                    <p class="text-white/60 text-xs mt-2">Silakan pilih tanggal yang akan datang</p>
+                </div>
+            `;
+        }
+
+        // Main function hitung dan tampilkan
+        function calculateAndDisplay() {
+            const targetValue = targetDateInput.value;
+            
+            if (!targetValue) {
+                renderError("Belum ada tanggal target. Pilih tanggal terlebih dahulu!");
+                return false;
+            }
+            
+            // Validasi
+            const validation = validateTarget(targetValue);
+            if (!validation.valid) {
+                renderError(validation.message);
+                return false;
+            }
+            
+            // Hitung selisih hari dari hari ini ke target
+            const daysLeft = getDaysToTarget(targetValue);
+            
+            // Format tanggal target
+            const targetFormatted = formatDateShort(targetValue);
+            
+            // Render hasil
+            renderCountdown(daysLeft, targetFormatted);
+            
+            return true;
+        }
+        
+        // Simpan target ke localStorage
+        function saveTarget() {
+            const targetValue = targetDateInput.value;
+            
+            if (!targetValue) {
+                showToast('❌ Pilih tanggal target dulu!');
+                return false;
+            }
+            
+            const validation = validateTarget(targetValue);
+            if (!validation.valid) {
+                showToast(validation.message);
+                return false;
+            }
+            
+            localStorage.setItem(STORAGE_KEY, targetValue);
+            calculateAndDisplay();
+            showToast('💾 Target tersimpan');
+            return true;
+        }
+        
+        // Reset target (hapus localStorage)
+        function resetTarget() {
+            localStorage.removeItem(STORAGE_KEY);
+            targetDateInput.value = '';
+            renderError("Target direset. Pilih tanggal target baru!");
+            showToast('🔄 Target direset');
+        }
+        
+        // Load dari localStorage
+        function loadFromStorage() {
+            const savedTarget = localStorage.getItem(STORAGE_KEY);
+            if (savedTarget) {
+                // Validasi apakah target masih valid (belum lewat terlalu lama? biarkan saja)
+                targetDateInput.value = savedTarget;
+                calculateAndDisplay();
+                return true;
+            } else {
+                // Set default: 7 hari dari sekarang
+                const defaultTarget = new Date();
+                defaultTarget.setDate(defaultTarget.getDate() + 7);
+                const defaultTargetStr = defaultTarget.toISOString().split('T')[0];
+                targetDateInput.value = defaultTargetStr;
+                calculateAndDisplay();
+                return false;
+            }
+        }
+        
+        // Update display hari ini
+        function updateTodayDisplay() {
+            const today = getToday();
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            const todayFormatted = today.toLocaleDateString('id-ID', options);
+            todayDateSpan.textContent = todayFormatted;
+        }
+        
+        // Cek apakah tanggal berganti (untuk update otomatis)
+        let lastCheckedDate = null;
+        function checkDateChange() {
+            const today = getToday().toISOString().split('T')[0];
+            if (lastCheckedDate !== today) {
+                lastCheckedDate = today;
+                // Tanggal berubah, update hitung mundur
+                if (targetDateInput.value) {
+                    calculateAndDisplay();
+                    // Optional: show notifikasi ringan
+                    const toastQuick = document.createElement('div');
+                    toastQuick.className = 'fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-3 py-1 rounded-full text-xs z-50';
+                    toastQuick.textContent = '📅 Hitung mundur diperbarui';
+                    document.body.appendChild(toastQuick);
+                    setTimeout(() => toastQuick.remove(), 2000);
+                }
+            }
+        }
+        
+        // Event listeners
+        function bindEvents() {
+            saveBtn.addEventListener('click', saveTarget);
+            resetBtn.addEventListener('click', resetTarget);
+            targetDateInput.addEventListener('change', () => {
+                // Preview saat ganti tanggal tanpa save dulu
+                if (targetDateInput.value) {
+                    const validation = validateTarget(targetDateInput.value);
+                    if (validation.valid) {
+                        calculateAndDisplay();
+                    } else {
+                        renderError(validation.message);
+                    }
+                }
+            });
+        }
+        
+        // Inisialisasi
+        function init() {
+            bindEvents();
+            updateTodayDisplay();
+            loadFromStorage();
+            
+            // Set interval untuk cek pergantian hari setiap 1 menit
+            setInterval(() => {
+                updateTodayDisplay();
+                checkDateChange();
+            }, 60000); // Cek setiap menit
+            
+            // Cek juga saat visibility change (tab aktif kembali)
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    updateTodayDisplay();
+                    checkDateChange();
+                }
+            });
+        }
+        
+        // Jalankan init
+        init();
+    </script>
+</body>
+</html>
